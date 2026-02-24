@@ -48,3 +48,9 @@ CREATE TABLE IF NOT EXISTS transactions (
 INSERT INTO app_users (username, password_hash)
 VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9')
 ON CONFLICT (username) DO NOTHING;
+
+-- 初始净值种子数据（总资产=0, 总份额=0, 初始净值=1.0）
+-- 系统要求 nav_history 至少有一条记录才能正常运行
+INSERT INTO nav_history (total_assets, total_shares, nav)
+SELECT 0, 0, 1.0
+WHERE NOT EXISTS (SELECT 1 FROM nav_history);

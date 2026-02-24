@@ -177,30 +177,33 @@ with tab2:
     # 用 session_state 回填
     default_inv = st.session_state.get('auto_invest_val', 0.0)
 
-    with st.form("invest_form"):
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            member_names = {m['ID']: m['成 员'] for m in members_data}
-            selected_member_name = st.selectbox("选择定投成员", list(member_names.values()))
-            selected_id = list(member_names.keys())[list(member_names.values()).index(selected_member_name)]
-        with col_m2:
-            # 数据回填支持
-            invest_amount = st.number_input("在此核对最终定投金额 (元)", min_value=0.0, value=default_inv, step=100.0)
-            
-        submitted_invest = st.form_submit_button("确认录入定投", type="primary")
-        if submitted_invest:
-            if invest_amount > 0:
-                success, msg = process_invest(selected_id, invest_amount)
-                if success:
-                    st.toast("✅ 定投处理并更新成功")
-                    # 提交成功后清除残余 AI 缓存
-                    if 'auto_invest_val' in st.session_state:
-                         del st.session_state['auto_invest_val']
-                    st.rerun()
+    if not members_data:
+        st.warning("⚠️ 当前没有任何家庭成员，请先到『👥 家庭成员管理中心』添加成员后再进行定投。")
+    else:
+        with st.form("invest_form"):
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                member_names = {m['ID']: m['成 员'] for m in members_data}
+                selected_member_name = st.selectbox("选择定投成员", list(member_names.values()))
+                selected_id = list(member_names.keys())[list(member_names.values()).index(selected_member_name)]
+            with col_m2:
+                # 数据回填支持
+                invest_amount = st.number_input("在此核对最终定投金额 (元)", min_value=0.0, value=default_inv, step=100.0)
+                
+            submitted_invest = st.form_submit_button("确认录入定投", type="primary")
+            if submitted_invest:
+                if invest_amount > 0:
+                    success, msg = process_invest(selected_id, invest_amount)
+                    if success:
+                        st.toast("✅ 定投处理并更新成功")
+                        # 提交成功后清除残余 AI 缓存
+                        if 'auto_invest_val' in st.session_state:
+                             del st.session_state['auto_invest_val']
+                        st.rerun()
+                    else:
+                        st.error(f"录入失败: {msg}")
                 else:
-                    st.error(f"录入失败: {msg}")
-            else:
-                 st.warning("金额需要大于0")
+                     st.warning("金额需要大于0")
 
 # ================= TAB 3: 智能资产快照 =================
 with tab3:
@@ -308,21 +311,24 @@ with tab5:
                      
     with col_mem2:
         st.markdown("#### ✏️ 修改现有成员信息")
-        with st.form("update_member_form"):
-            member_names = {m['ID']: m['成 员'] for m in members_data}
-            selected_upd_name = st.selectbox("选择要修改的现有成员", list(member_names.values()), key="upd_sel")
-            selected_upd_id = list(member_names.keys())[list(member_names.values()).index(selected_upd_name)]
-            
-            new_edit_name = st.text_input("更新为您期望的新姓名", value=selected_upd_name)
-            if st.form_submit_button("保存修改", type="primary"):
-                 succ, msg = update_member_name(selected_upd_id, new_edit_name)
-                 if succ:
-                     st.success(msg)
-                     import time
-                     time.sleep(1)
-                     st.rerun()
-                 else:
-                     st.error(msg)
+        if not members_data:
+            st.info("暂无成员数据，请先在左侧新增成员。")
+        else:
+            with st.form("update_member_form"):
+                member_names = {m['ID']: m['成 员'] for m in members_data}
+                selected_upd_name = st.selectbox("选择要修改的现有成员", list(member_names.values()), key="upd_sel")
+                selected_upd_id = list(member_names.keys())[list(member_names.values()).index(selected_upd_name)]
+                
+                new_edit_name = st.text_input("更新为您期望的新姓名", value=selected_upd_name)
+                if st.form_submit_button("保存修改", type="primary"):
+                     succ, msg = update_member_name(selected_upd_id, new_edit_name)
+                     if succ:
+                         st.success(msg)
+                         import time
+                         time.sleep(1)
+                         st.rerun()
+                     else:
+                         st.error(msg)
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 # ================= TAB 6: V4 安全中心 =================
