@@ -31,6 +31,8 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 if 'current_user' not in st.session_state:
     st.session_state['current_user'] = ""
+if 'user_role' not in st.session_state:
+    st.session_state['user_role'] = ""
 
 if not st.session_state['logged_in']:
     st.markdown("<h1 style='text-align: center;'>🔐 家庭基金管理系统 - 安全访问凭证</h1>", unsafe_allow_html=True)
@@ -45,10 +47,11 @@ if not st.session_state['logged_in']:
             
             if submitted:
                 try:
-                    is_valid = verify_user(user_input, pass_input)
+                    is_valid, user_role = verify_user(user_input, pass_input)
                     if is_valid:
                         st.session_state['logged_in'] = True
                         st.session_state['current_user'] = user_input
+                        st.session_state['user_role'] = user_role
                         st.success("身份验证成功！正在进入安全网关...")
                         import time
                         time.sleep(1)
@@ -64,11 +67,17 @@ if not st.session_state['logged_in']:
     st.stop()
     
 # 如果执行到这里，说明鉴权通过
+# 角色判断
+is_admin = st.session_state.get('user_role') == 'admin'
+role_label = "🔑 管理员" if is_admin else "👁️ 只读用户"
+
 with st.sidebar:
     st.success(f"👋 欢迎登录回来：**{st.session_state['current_user']}**")
+    st.caption(f"当前角色：{role_label}")
     if st.button("🚪 锁定并退出", use_container_width=True):
         st.session_state['logged_in'] = False
         st.session_state['current_user'] = ""
+        st.session_state['user_role'] = ""
         st.rerun()
     st.markdown("---")
 
@@ -159,115 +168,120 @@ with tab1:
 # ================= TAB 2: 智能定投录入 =================
 with tab2:
     st.subheader("➕ 智能定投录入")
-    st.info(f"净值锁定： {latest_nav:.4f}")
-    
-    # AI 识别区
-    with st.expander("📸 上传定投转账截图自动识别金额", expanded=True):
-        inv_img = st.file_uploader("上传转账凭证", type=['png', 'jpg', 'jpeg'], key="inv_upload")
-        if inv_img is not None:
-            if st.button("🤖 AI 提取定投金额"):
-                with st.spinner("Gemini 视觉分析中..."):
-                    succ, val = ai_parser.parse_investment_amount(inv_img)
-                    if succ:
-                        st.session_state['auto_invest_val'] = float(val)
-                        st.success(f"识别成功：建议金额为 {val}")
-                    else:
-                        st.error(val)
-
-    # 用 session_state 回填
-    default_inv = st.session_state.get('auto_invest_val', 0.0)
-
-    if not members_data:
-        st.warning("⚠️ 当前没有任何家庭成员，请先到『👥 家庭成员管理中心』添加成员后再进行定投。")
+    if not is_admin:
+        st.warning("🔒 您当前为只读账号，无权执行定投操作。如需操作权限，请联系管理员。")
     else:
-        with st.form("invest_form"):
-            col_m1, col_m2 = st.columns(2)
-            with col_m1:
-                member_names = {m['ID']: m['成 员'] for m in members_data}
-                selected_member_name = st.selectbox("选择定投成员", list(member_names.values()))
-                selected_id = list(member_names.keys())[list(member_names.values()).index(selected_member_name)]
-            with col_m2:
-                # 数据回填支持
-                invest_amount = st.number_input("在此核对最终定投金额 (元)", min_value=0.0, value=default_inv, step=100.0)
-                
-            submitted_invest = st.form_submit_button("确认录入定投", type="primary")
-            if submitted_invest:
-                if invest_amount > 0:
-                    success, msg = process_invest(selected_id, invest_amount)
-                    if success:
-                        st.toast("✅ 定投处理并更新成功")
-                        # 提交成功后清除残余 AI 缓存
-                        if 'auto_invest_val' in st.session_state:
-                             del st.session_state['auto_invest_val']
-                        st.rerun()
+        st.info(f"净值锁定： {latest_nav:.4f}")
+    
+        # AI 识别区
+        with st.expander("📸 上传定投转账截图自动识别金额", expanded=True):
+            inv_img = st.file_uploader("上传转账凭证", type=['png', 'jpg', 'jpeg'], key="inv_upload")
+            if inv_img is not None:
+                if st.button("🤖 AI 提取定投金额"):
+                    with st.spinner("Gemini 视觉分析中..."):
+                        succ, val = ai_parser.parse_investment_amount(inv_img)
+                        if succ:
+                            st.session_state['auto_invest_val'] = float(val)
+                            st.success(f"识别成功：建议金额为 {val}")
+                        else:
+                            st.error(val)
+
+        # 用 session_state 回填
+        default_inv = st.session_state.get('auto_invest_val', 0.0)
+
+        if not members_data:
+            st.warning("⚠️ 当前没有任何家庭成员，请先到『👥 家庭成员管理中心』添加成员后再进行定投。")
+        else:
+            with st.form("invest_form"):
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    member_names = {m['ID']: m['成 员'] for m in members_data}
+                    selected_member_name = st.selectbox("选择定投成员", list(member_names.values()))
+                    selected_id = list(member_names.keys())[list(member_names.values()).index(selected_member_name)]
+                with col_m2:
+                    # 数据回填支持
+                    invest_amount = st.number_input("在此核对最终定投金额 (元)", min_value=0.0, value=default_inv, step=100.0)
+                    
+                submitted_invest = st.form_submit_button("确认录入定投", type="primary")
+                if submitted_invest:
+                    if invest_amount > 0:
+                        success, msg = process_invest(selected_id, invest_amount)
+                        if success:
+                            st.toast("✅ 定投处理并更新成功")
+                            # 提交成功后清除残余 AI 缓存
+                            if 'auto_invest_val' in st.session_state:
+                                 del st.session_state['auto_invest_val']
+                            st.rerun()
+                        else:
+                            st.error(f"录入失败: {msg}")
                     else:
-                        st.error(f"录入失败: {msg}")
-                else:
-                     st.warning("金额需要大于0")
+                         st.warning("金额需要大于0")
 
 # ================= TAB 3: 智能资产快照 =================
 with tab3:
     st.subheader("📝 智能资产快照评估")
-    
-    with st.expander("📸 批量上传券商持仓截图智能填表"):
-         st.markdown("您可以为各大资产仓位分布上传手机截图（交由AI解析后，将自动回填下方数字供您最终核对）。")
-         col_upl1, col_upl2, col_upl3, col_upl4 = st.columns(4)
-         with col_upl1:
-              hk_img = st.file_uploader("港股截图", type=['png', 'jpg', 'jpeg'], key="hk_up")
-         with col_upl2:
-              us_img = st.file_uploader("美股截图", type=['png', 'jpg', 'jpeg'], key="us_up")
-         with col_upl3:
-              div_img = st.file_uploader("红利截图", type=['png', 'jpg', 'jpeg'], key="div_up")
-         with col_upl4:
-              hr_img = st.file_uploader("高风险截图", type=['png', 'jpg', 'jpeg'], key="hr_up")
-              
-         if st.button("🤖 开始批量识别市值"):
-              with st.spinner("Gemini 多模态并发分析中..."):
-                   if hk_img:
-                       s, v = ai_parser.parse_asset_snapshot(hk_img)
-                       if s: st.session_state['hk_val'] = float(v)
-                   if us_img:
-                       s, v = ai_parser.parse_asset_snapshot(us_img)
-                       if s: st.session_state['us_val'] = float(v)
-                   if div_img:
-                       s, v = ai_parser.parse_asset_snapshot(div_img)
-                       if s: st.session_state['div_val'] = float(v)
-                   if hr_img:
-                       s, v = ai_parser.parse_asset_snapshot(hr_img)
-                       if s: st.session_state['hr_val'] = float(v)
-              st.success("解析完成，请在下方核实回填的数据。")
+    if not is_admin:
+        st.warning("🔒 您当前为只读账号，无权执行资产快照操作。如需操作权限，请联系管理员。")
+    else:
+        with st.expander("📸 批量上传券商持仓截图智能填表"):
+             st.markdown("您可以为各大资产仓位分布上传手机截图（交由AI解析后，将自动回填下方数字供您最终核对）。")
+             col_upl1, col_upl2, col_upl3, col_upl4 = st.columns(4)
+             with col_upl1:
+                  hk_img = st.file_uploader("港股截图", type=['png', 'jpg', 'jpeg'], key="hk_up")
+             with col_upl2:
+                  us_img = st.file_uploader("美股截图", type=['png', 'jpg', 'jpeg'], key="us_up")
+             with col_upl3:
+                  div_img = st.file_uploader("红利截图", type=['png', 'jpg', 'jpeg'], key="div_up")
+             with col_upl4:
+                  hr_img = st.file_uploader("高风险截图", type=['png', 'jpg', 'jpeg'], key="hr_up")
+                  
+             if st.button("🤖 开始批量识别市值"):
+                  with st.spinner("Gemini 多模态并发分析中..."):
+                       if hk_img:
+                           s, v = ai_parser.parse_asset_snapshot(hk_img)
+                           if s: st.session_state['hk_val'] = float(v)
+                       if us_img:
+                           s, v = ai_parser.parse_asset_snapshot(us_img)
+                           if s: st.session_state['us_val'] = float(v)
+                       if div_img:
+                           s, v = ai_parser.parse_asset_snapshot(div_img)
+                           if s: st.session_state['div_val'] = float(v)
+                       if hr_img:
+                           s, v = ai_parser.parse_asset_snapshot(hr_img)
+                           if s: st.session_state['hr_val'] = float(v)
+                  st.success("解析完成，请在下方核实回填的数据。")
 
-    # 回填
-    def_hk = st.session_state.get('hk_val', 0.0)
-    def_us = st.session_state.get('us_val', 0.0)
-    def_div = st.session_state.get('div_val', 0.0)
-    def_hr = st.session_state.get('hr_val', 0.0)
+        # 回填
+        def_hk = st.session_state.get('hk_val', 0.0)
+        def_us = st.session_state.get('us_val', 0.0)
+        def_div = st.session_state.get('div_val', 0.0)
+        def_hr = st.session_state.get('hr_val', 0.0)
 
-    with st.form("asset_form"):
-        col_a1, col_a2 = st.columns(2)
-        with col_a1:
-            hk_val = st.number_input("📝 港股市值", min_value=0.0, value=def_hk, step=1000.0)
-            us_val = st.number_input("📝 美股市值", min_value=0.0, value=def_us, step=1000.0)
-        with col_a2:
-            div_val = st.number_input("📝 低波红利股市值", min_value=0.0, value=def_div, step=1000.0)
-            hr_val = st.number_input("📝 高风险股市值", min_value=0.0, value=def_hr, step=1000.0)
+        with st.form("asset_form"):
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                hk_val = st.number_input("📝 港股市值", min_value=0.0, value=def_hk, step=1000.0)
+                us_val = st.number_input("📝 美股市值", min_value=0.0, value=def_us, step=1000.0)
+            with col_a2:
+                div_val = st.number_input("📝 低波红利股市值", min_value=0.0, value=def_div, step=1000.0)
+                hr_val = st.number_input("📝 高风险股市值", min_value=0.0, value=def_hr, step=1000.0)
+                
+            submitted_assets = st.form_submit_button("计算最新净值并归档", type="primary")
             
-        submitted_assets = st.form_submit_button("计算最新净值并归档", type="primary")
-        
-        if submitted_assets:
-            total_input = hk_val + us_val + div_val + hr_val
-            if total_input == 0:
-                 st.warning("所有资产市值总和不能为0，请确认您的输入。")
-            else:
-                 success, msg = update_assets_and_nav(hk_val, us_val, div_val, hr_val)
-                 if success:
-                     st.toast("✅ 新净值生成与重估成功")
-                     # 成功后清除缓存
-                     for k in ['hk_val', 'us_val', 'div_val', 'hr_val']:
-                         if k in st.session_state: del st.session_state[k]
-                     st.rerun()
-                 else:
-                     st.error(f"净值更新失败: {msg}")
+            if submitted_assets:
+                total_input = hk_val + us_val + div_val + hr_val
+                if total_input == 0:
+                     st.warning("所有资产市值总和不能为0，请确认您的输入。")
+                else:
+                     success, msg = update_assets_and_nav(hk_val, us_val, div_val, hr_val)
+                     if success:
+                         st.toast("✅ 新净值生成与重估成功")
+                         # 成功后清除缓存
+                         for k in ['hk_val', 'us_val', 'div_val', 'hr_val']:
+                             if k in st.session_state: del st.session_state[k]
+                         st.rerun()
+                     else:
+                         st.error(f"净值更新失败: {msg}")
 
 # ================= TAB 4: 历史与回滚 (V2) =================
 with tab4:
@@ -275,60 +289,65 @@ with tab4:
     st.markdown("⚠️ **高危操作**：如果您在上面“填错数字”并按下了确认导致目前净值或大盘状态出局，您可以在此撤销系统的最后一笔业务数据（无论是定投流水，还是新的资产重新快照）。")
     st.info("💡 回滚将原子级物理删除最后一笔错误的资产快照及与之关联的交易，扣减错误折算的人员本金与份额，将系统强制时空旅行退回上一状态。**支持多次连续撤销**。")
     
-    if st.button("⚠️ 确认：撤回系统的最后一笔操作", type="primary"):
-        with st.spinner("执行事务级安全回滚..."):
-             resp_success, resp_msg = rollback_last_action()
-             if resp_success:
-                 st.success(f"✅ 执行成功：{resp_msg}")
-                 st.toast("时间倒流成功")
-                 # 给点反应时间让用户看清字再重绘
-                 import time
-                 time.sleep(2)
-                 st.rerun()
-             else:
-                 st.error(resp_msg)
+    if not is_admin:
+        st.warning("🔒 您当前为只读账号，无权执行回滚操作。")
+    else:
+        if st.button("⚠️ 确认：撤回系统的最后一笔操作", type="primary"):
+            with st.spinner("执行事务级安全回滚..."):
+                 resp_success, resp_msg = rollback_last_action()
+                 if resp_success:
+                     st.success(f"✅ 执行成功：{resp_msg}")
+                     st.toast("时间倒流成功")
+                     import time
+                     time.sleep(2)
+                     st.rerun()
+                 else:
+                     st.error(resp_msg)
                  
 st.markdown("<br><hr>", unsafe_allow_html=True)
 # ================= TAB 5: V3 新增成员管理 =================
 with tab5:
     st.subheader("👥 家庭成员管理中心")
-    st.markdown("为了保证净值与财务系统的对账一致性，此处**仅允许新增成员**或**修改成员称呼**。如果您需要修改某位成员的资产资金，请统一使用『💰 智能定投录入』进行冲改（支持输入负数进行资金抽取）。")
+    if not is_admin:
+        st.warning("🔒 您当前为只读账号，无权管理成员信息。如需操作权限，请联系管理员。")
+    else:
+        st.markdown("为了保证净值与财务系统的对账一致性，此处**仅允许新增成员**或**修改成员称呼**。如果您需要修改某位成员的资产资金，请统一使用『💰 智能定投录入』进行冲改（支持输入负数进行资金抽取）。")
     
-    col_mem1, col_mem2 = st.columns(2)
-    with col_mem1:
-        st.markdown("#### ✨ 新增家庭成员")
-        with st.form("add_member_form"):
-            new_mem_name = st.text_input("新成员姓名 / 昵称")
-            if st.form_submit_button("确认创建成员", type="primary"):
-                succ, msg = add_member(new_mem_name)
-                if succ:
-                     st.success(msg)
-                     import time
-                     time.sleep(1)
-                     st.rerun()
-                else:
-                     st.error(msg)
-                     
-    with col_mem2:
-        st.markdown("#### ✏️ 修改现有成员信息")
-        if not members_data:
-            st.info("暂无成员数据，请先在左侧新增成员。")
-        else:
-            with st.form("update_member_form"):
-                member_names = {m['ID']: m['成 员'] for m in members_data}
-                selected_upd_name = st.selectbox("选择要修改的现有成员", list(member_names.values()), key="upd_sel")
-                selected_upd_id = list(member_names.keys())[list(member_names.values()).index(selected_upd_name)]
-                
-                new_edit_name = st.text_input("更新为您期望的新姓名", value=selected_upd_name)
-                if st.form_submit_button("保存修改", type="primary"):
-                     succ, msg = update_member_name(selected_upd_id, new_edit_name)
-                     if succ:
+        col_mem1, col_mem2 = st.columns(2)
+        with col_mem1:
+            st.markdown("#### ✨ 新增家庭成员")
+            with st.form("add_member_form"):
+                new_mem_name = st.text_input("新成员姓名 / 昵称")
+                if st.form_submit_button("确认创建成员", type="primary"):
+                    succ, msg = add_member(new_mem_name)
+                    if succ:
                          st.success(msg)
                          import time
                          time.sleep(1)
                          st.rerun()
-                     else:
+                    else:
                          st.error(msg)
+                         
+        with col_mem2:
+            st.markdown("#### ✏️ 修改现有成员信息")
+            if not members_data:
+                st.info("暂无成员数据，请先在左侧新增成员。")
+            else:
+                with st.form("update_member_form"):
+                    member_names = {m['ID']: m['成 员'] for m in members_data}
+                    selected_upd_name = st.selectbox("选择要修改的现有成员", list(member_names.values()), key="upd_sel")
+                    selected_upd_id = list(member_names.keys())[list(member_names.values()).index(selected_upd_name)]
+                    
+                    new_edit_name = st.text_input("更新为您期望的新姓名", value=selected_upd_name)
+                    if st.form_submit_button("保存修改", type="primary"):
+                         succ, msg = update_member_name(selected_upd_id, new_edit_name)
+                         if succ:
+                             st.success(msg)
+                             import time
+                             time.sleep(1)
+                             st.rerun()
+                         else:
+                             st.error(msg)
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 # ================= TAB 6: V4 安全中心 =================
@@ -364,19 +383,22 @@ with tab6:
                          
     with col_s2:
         st.markdown("#### ➕ 增开后台新席位")
-        with st.form("new_user_form"):
-             st.info("💡 为其他负责家庭财务录入的成员配置独立的登录账号保护层。")
-             create_username = st.text_input("期望分配的用户名 (如 mom, dad)")
-             create_pwd = st.text_input("初始登录密码", type="password")
-             if st.form_submit_button("确认开通", type="primary"):
-                 if not create_username or not create_pwd:
-                     st.error("新用户名和密码各项均不可为空白。")
-                 else:
-                     s_usr, m_usr = add_user(create_username, create_pwd)
-                     if s_usr:
-                         st.success(f"🎊 {m_usr}！您可以通过这套账户再次登入管理平台了。")
+        if not is_admin:
+            st.info("🔒 只有管理员才能开通新账号。")
+        else:
+            with st.form("new_user_form"):
+                 st.info("💡 为其他家庭成员配置独立的只读登录账号。")
+                 create_username = st.text_input("期望分配的用户名 (如 mom, dad)")
+                 create_pwd = st.text_input("初始登录密码", type="password")
+                 if st.form_submit_button("确认开通", type="primary"):
+                     if not create_username or not create_pwd:
+                         st.error("新用户名和密码各项均不可为空白。")
                      else:
-                         st.error(m_usr)
+                         s_usr, m_usr = add_user(create_username, create_pwd)
+                         if s_usr:
+                             st.success(f"🎊 {m_usr}！该账户为只读权限，可查看数据但无法修改。")
+                         else:
+                             st.error(m_usr)
 
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.caption("Family Fund Manager V4 © 2026 | Powered by Streamlit, Supabase & OpenAPI")

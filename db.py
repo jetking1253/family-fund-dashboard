@@ -16,23 +16,22 @@ def init_db():
 
 # --------- 账号鉴权控制接口 ---------
 def verify_user(username, password_plaintext):
-    """核对传递的用户名和明文密码是否与库中 SHA256 匹配"""
+    """核对用户名和密码，返回 (是否通过, 角色字符串)"""
     try:
         supabase = get_supabase()
-        print(f"【调试】正在查询数据库中的用户: '{username}'")
-        response = supabase.table("app_users").select("password_hash").eq("username", username).execute()
-        print(f"【调试】数据库真实的返回结果: {response.data}")
+        response = supabase.table("app_users").select("password_hash, role").eq("username", username).execute()
         
         if not response.data:
-            return False
+            return False, None
         
         stored_hash = response.data[0]['password_hash']
         input_hash = hashlib.sha256(password_plaintext.encode()).hexdigest()
-        print(f"【调试】输入的哈希: {input_hash} | 库里的哈希: {stored_hash}")
-        return input_hash == stored_hash
+        if input_hash == stored_hash:
+            return True, response.data[0].get('role', 'viewer')
+        return False, None
     except Exception as e:
         print(f"验证用户失败: {e}")
-        return False
+        return False, None
 
 def change_password(username, new_password_plaintext):
     """修改指定账户密码并落盘"""
@@ -48,7 +47,7 @@ def change_password(username, new_password_plaintext):
         return False, f"修改失败: {e}"
 
 def add_user(username, password_plaintext):
-    """新增额外的系统访问账号"""
+    """新增额外的系统访问账号（默认 viewer 只读角色）"""
     try:
         supabase = get_supabase()
         # 检查是否已被占用
@@ -57,8 +56,12 @@ def add_user(username, password_plaintext):
             return False, "用户名已被占用"
             
         new_hash = hashlib.sha256(password_plaintext.encode()).hexdigest()
-        supabase.table("app_users").insert({"username": username, "password_hash": new_hash}).execute()
-        return True, "账号创建成功"
+        supabase.table("app_users").insert({
+            "username": username,
+            "password_hash": new_hash,
+            "role": "viewer"
+        }).execute()
+        return True, "账号创建成功（只读权限）"
     except Exception as e:
         return False, f"创建失败: {e}"
 
