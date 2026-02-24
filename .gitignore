@@ -1,0 +1,17 @@
+# 忽略 Streamlit 密钥文件
+.streamlit/
+secrets.toml
+
+# 忽略本地遗留数据库和缓存
+fund_data.db
+__pycache__/
+
+# 忽略 Antigravity 系统缓存
+.agent/
+
+# 忽略本地备份和历史版本
+backups/
+*.orig
+
+# 忽略临时编辑文件 (比如那个 .!98665!fund_logic.py)
+.*!*!*.py
