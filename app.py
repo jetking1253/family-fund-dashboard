@@ -44,15 +44,21 @@ if not st.session_state['logged_in']:
             submitted = st.form_submit_button("登录验证", type="primary", use_container_width=True)
             
             if submitted:
-                if verify_user(user_input, pass_input):
-                    st.session_state['logged_in'] = True
-                    st.session_state['current_user'] = user_input
-                    st.success("身份验证成功！正在进入安全网关...")
-                    import time
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ 抱歉，账号或密码错误。如果您是初次部署，默认超管为 admin 与 admin123")
+                try:
+                    is_valid = verify_user(user_input, pass_input)
+                    if is_valid:
+                        st.session_state['logged_in'] = True
+                        st.session_state['current_user'] = user_input
+                        st.success("身份验证成功！正在进入安全网关...")
+                        import time
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ 抱歉，账号或密码错误。如果您是初次部署，默认超管为 admin 与 admin123")
+                except Exception as e:
+                    import traceback
+                    st.error(f"⚠️ [核心崩溃报告] 鉴权过程中发生了底层异常：{e}")
+                    st.code(traceback.format_exc())
     
     # 未登录状态下，强行阻断所有下文渲染
     st.stop()
