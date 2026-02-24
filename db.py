@@ -19,12 +19,16 @@ def verify_user(username, password_plaintext):
     """核对传递的用户名和明文密码是否与库中 SHA256 匹配"""
     try:
         supabase = get_supabase()
+        print(f"【调试】正在查询数据库中的用户: '{username}'")
         response = supabase.table("app_users").select("password_hash").eq("username", username).execute()
+        print(f"【调试】数据库真实的返回结果: {response.data}")
+        
         if not response.data:
             return False
         
         stored_hash = response.data[0]['password_hash']
         input_hash = hashlib.sha256(password_plaintext.encode()).hexdigest()
+        print(f"【调试】输入的哈希: {input_hash} | 库里的哈希: {stored_hash}")
         return input_hash == stored_hash
     except Exception as e:
         print(f"验证用户失败: {e}")
