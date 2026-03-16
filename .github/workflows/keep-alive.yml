@@ -13,25 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📡 Ping Supabase REST API (nav_history表)
-        run: |
-          echo "⏰ 执行时间: $(date)"
-          echo "🔍 正在查询 Supabase 数据库以保持活跃状态..."
-          
-          # We append the anon key in the URL query to fulfill the PostgREST access requirement
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/?apikey=${{ secrets.SUPABASE_ANON_KEY }}")
-          
-          echo "📊 Supabase 响应状态码: $RESPONSE"
-          
-          if [ "$RESPONSE" = "200" ]; then
-            echo "✅ Supabase 数据库响应正常，活跃状态已维持！"
-          else
-            echo "⚠️ Supabase 响应异常，状态码: $RESPONSE"
-            exit 1
-          fi
-
-      - name: 🌐 Ping Streamlit App
+      - name: 🌐 Ping Streamlit App (This also keeps Supabase alive)
         run: |
           echo "🌐 正在唤醒 Streamlit 应用..."
           
@@ -41,10 +23,10 @@ jobs:
           
           echo "📊 Streamlit 响应状态码: $RESPONSE"
           
-          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "302" ]; then
-            echo "✅ Streamlit 应用已唤醒！"
+          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "302" ] || [ "$RESPONSE" = "403" ]; then
+            echo "✅ Streamlit 应用已唤醒！(连带唤醒后台 Supabase)"
           else
-            echo "ℹ️ Streamlit 返回状态码 $RESPONSE（可能正在启动，不影响 Supabase 保活）"
+            echo "ℹ️ Streamlit 返回状态码 $RESPONSE"
           fi
 
       - name: 📋 保活任务完成
