@@ -18,8 +18,9 @@ jobs:
           echo "⏰ 执行时间: $(date)"
           echo "🔍 正在查询 Supabase 数据库以保持活跃状态..."
           
+          # We append the anon key in the URL query to fulfill the PostgREST access requirement
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/")
+            -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/?apikey=${{ secrets.SUPABASE_ANON_KEY }}")
           
           echo "📊 Supabase 响应状态码: $RESPONSE"
           
