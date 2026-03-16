@@ -9,6 +9,7 @@ from fund_logic import (
     process_invest,
     get_nav_history_df,
     get_latest_assets_allocation,
+    get_latest_asset_details,
     rollback_last_action,  # V2新增回滚支持
     add_member,            # V3新增扩口
     update_member_name     # V3改名扩口
@@ -165,6 +166,43 @@ def render_data_overview():
              fig_pie.update_layout(template="plotly_white")
              st.plotly_chart(fig_pie, use_container_width=True)
 
+    # ---- 持仓明细展示 ----
+    st.markdown("---")
+    st.subheader("📋 最新持仓明细")
+    details = get_latest_asset_details()
+    if details:
+        df_det = pd.DataFrame(details)
+        col_map = {
+            "category": "类别",
+            "stock_name": "名称/代码",
+            "shares_held": "持仓数量",
+            "cost_price": "成本价",
+            "current_price": "现价",
+            "total_value": "市值(元)",
+            "pnl": "盈亏(元)",
+            "pnl_pct": "盈亏(%)",
+            "notes": "备注",
+        }
+        display_cols = [c for c in col_map if c in df_det.columns]
+        df_show = df_det[display_cols].rename(columns=col_map)
+        # 盈亏着色
+        def color_pnl(val):
+            if val is None: return ""
+            try:
+                v = float(val)
+                return "color: #28a745" if v > 0 else ("color: #dc3545" if v < 0 else "")
+            except: return ""
+        format_dict = {}
+        if "市值(元)" in df_show.columns: format_dict["市值(元)"] = "{:,.2f}"
+        if "盈亏(元)" in df_show.columns: format_dict["盈亏(元)"] = "{:,.2f}"
+        if "盈亏(%)" in df_show.columns: format_dict["盈亏(%)"] = "{:.2f}%"
+        st.dataframe(
+            df_show.style.format(format_dict, na_rep="-").applymap(color_pnl, subset=[c for c in ["盈亏(元)", "盈亏(%)"] if c in df_show.columns]),
+            use_container_width=True
+        )
+    else:
+        st.info("暂无持仓明细记录。请在『📝 智能资产快照』标签页提交资产时填写各类资产的股票/基金明细。")
+
 # --------- 只读用户：直接渲染数据总览后结束 ---------
 if not is_admin:
     render_data_overview()
@@ -211,7 +249,7 @@ with tab2:
                 selected_id = list(member_names.keys())[list(member_names.values()).index(selected_member_name)]
             with col_m2:
                 invest_amount = st.number_input("在此核对最终定投金额 (元)", min_value=0.0, value=default_inv, step=100.0)
-                
+
             submitted_invest = st.form_submit_button("确认录入定投", type="primary")
             if submitted_invest:
                 if invest_amount > 0:
@@ -229,64 +267,140 @@ with tab2:
 # ================= TAB 3: 智能资产快照 =================
 with tab3:
     st.subheader("📝 智能资产快照评估")
-    with st.expander("📸 批量上传券商持仓截图智能填表"):
-         st.markdown("您可以为各大资产仓位分布上传手机截图（交由AI解析后，将自动回填下方数字供您最终核对）。")
-         col_upl1, col_upl2, col_upl3, col_upl4 = st.columns(4)
-         with col_upl1:
-              hk_img = st.file_uploader("港股截图", type=['png', 'jpg', 'jpeg'], key="hk_up")
-         with col_upl2:
-              us_img = st.file_uploader("美股截图", type=['png', 'jpg', 'jpeg'], key="us_up")
-         with col_upl3:
-              div_img = st.file_uploader("红利截图", type=['png', 'jpg', 'jpeg'], key="div_up")
-         with col_upl4:
-              hr_img = st.file_uploader("高风险截图", type=['png', 'jpg', 'jpeg'], key="hr_up")
-              
-         if st.button("🤖 开始批量识别市值"):
-              with st.spinner("Gemini 多模态并发分析中..."):
-                   if hk_img:
-                       s, v = ai_parser.parse_asset_snapshot(hk_img)
-                       if s: st.session_state['hk_val'] = float(v)
-                   if us_img:
-                       s, v = ai_parser.parse_asset_snapshot(us_img)
-                       if s: st.session_state['us_val'] = float(v)
-                   if div_img:
-                       s, v = ai_parser.parse_asset_snapshot(div_img)
-                       if s: st.session_state['div_val'] = float(v)
-                   if hr_img:
-                       s, v = ai_parser.parse_asset_snapshot(hr_img)
-                       if s: st.session_state['hr_val'] = float(v)
-              st.success("解析完成，请在下方核实回填的数据。")
 
-    # 回填
-    def_hk = st.session_state.get('hk_val', 0.0)
-    def_us = st.session_state.get('us_val', 0.0)
+    # ---- AI 批量识别区 ----
+    with st.expander("📸 批量上传券商持仓截图智能填表", expanded=True):
+        st.markdown("上传各仓位截图，AI 将同时提取**总市值**和**每只股票/基金的明细**（名称、成本、现价、盈亏等）供您核对。")
+        col_upl1, col_upl2, col_upl3, col_upl4 = st.columns(4)
+        with col_upl1:
+            hk_img = st.file_uploader("港股截图", type=['png', 'jpg', 'jpeg'], key="hk_up")
+        with col_upl2:
+            us_img = st.file_uploader("美股截图", type=['png', 'jpg', 'jpeg'], key="us_up")
+        with col_upl3:
+            div_img = st.file_uploader("红利截图", type=['png', 'jpg', 'jpeg'], key="div_up")
+        with col_upl4:
+            hr_img = st.file_uploader("高风险截图", type=['png', 'jpg', 'jpeg'], key="hr_up")
+
+        if st.button("🤖 开始批量识别市值 + 持仓明细"):
+            with st.spinner("AI 多模态并发分析中..."):
+                for img, cat, val_key, det_key in [
+                    (hk_img,  "港股",   "hk_val",  "hk_details"),
+                    (us_img,  "美股",   "us_val",  "us_details"),
+                    (div_img, "红利",   "div_val", "div_details"),
+                    (hr_img,  "高风险", "hr_val",  "hr_details"),
+                ]:
+                    if img is not None:
+                        img.seek(0)
+                        s, v = ai_parser.parse_asset_snapshot(img)
+                        if s:
+                            st.session_state[val_key] = float(v)
+                        img.seek(0)
+                        sd, details = ai_parser.parse_asset_details_snapshot(img, category=cat)
+                        if sd:
+                            st.session_state[det_key] = details
+                        else:
+                            st.warning(f"⚠️ {cat} 明细识别失败: {details}")
+            st.success("解析完成！请在下方核实数据，可手动编辑后再提交。")
+
+    # ---- 各类明细编辑区 ----
+    EMPTY_ROW = {"category": "", "stock_name": "", "shares_held": None,
+                 "cost_price": None, "current_price": None, "total_value": None,
+                 "pnl": None, "pnl_pct": None, "notes": ""}
+    DETAIL_COLS = {
+        "category":      "类别",
+        "stock_name":    "名称/代码",
+        "shares_held":   "持仓数量",
+        "cost_price":    "成本价",
+        "current_price": "现价",
+        "total_value":   "市值(元)",
+        "pnl":           "盈亏(元)",
+        "pnl_pct":       "盈亏(%)",
+        "notes":         "备注",
+    }
+
+    def render_detail_editor(label, session_key, category, default_val_key):
+        """渲染某类资产的持仓明细 data_editor"""
+        st.markdown(f"#### {label} 持仓明细")
+        rows = st.session_state.get(session_key, [])
+        if not rows:
+            rows = [{**EMPTY_ROW, "category": category}]
+        df_edit = pd.DataFrame(rows)[list(DETAIL_COLS.keys())]
+        df_edit.columns = list(DETAIL_COLS.values())
+        edited = st.data_editor(
+            df_edit,
+            num_rows="dynamic",
+            use_container_width=True,
+            key=f"editor_{session_key}",
+            column_config={
+                "类别":      st.column_config.TextColumn("类别", width="small"),
+                "名称/代码": st.column_config.TextColumn("名称/代码", width="medium"),
+                "持仓数量":  st.column_config.NumberColumn("持仓数量", format="%.4f"),
+                "成本价":    st.column_config.NumberColumn("成本价", format="%.4f"),
+                "现价":      st.column_config.NumberColumn("现价",   format="%.4f"),
+                "市值(元)": st.column_config.NumberColumn("市值(元)", format="¥%.2f"),
+                "盈亏(元)": st.column_config.NumberColumn("盈亏(元)", format="¥%.2f"),
+                "盈亏(%)": st.column_config.NumberColumn("盈亏(%)",  format="%.2f%%"),
+                "备注":      st.column_config.TextColumn("备注", width="medium"),
+            },
+            hide_index=True,
+        )
+        # 将编辑后的 df 转换回 dict list 存入 session
+        edited_renamed = edited.rename(columns={v: k for k, v in DETAIL_COLS.items()})
+        st.session_state[session_key] = edited_renamed.to_dict('records')
+
+    with st.expander("✏️ 查看并编辑持仓明细（AI 解析后自动填入，可手动修改）", expanded=True):
+        col_det1, col_det2 = st.columns(2)
+        with col_det1:
+            render_detail_editor("🇭🇰 港股",  "hk_details",  "港股",   "hk_val")
+            render_detail_editor("📊 红利", "div_details", "红利",   "div_val")
+        with col_det2:
+            render_detail_editor("🇺🇸 美股",  "us_details",  "美股",   "us_val")
+            render_detail_editor("⚡ 高风险", "hr_details",  "高风险", "hr_val")
+
+    st.markdown("---")
+    # ---- 总市值核对和提交 ----
+    def_hk  = st.session_state.get('hk_val', 0.0)
+    def_us  = st.session_state.get('us_val', 0.0)
     def_div = st.session_state.get('div_val', 0.0)
-    def_hr = st.session_state.get('hr_val', 0.0)
+    def_hr  = st.session_state.get('hr_val', 0.0)
 
     with st.form("asset_form"):
+        st.markdown("#### 💰 核对总市值（最终以此处数字为准计算净值）")
         col_a1, col_a2 = st.columns(2)
         with col_a1:
-            hk_val = st.number_input("📝 港股市值", min_value=0.0, value=def_hk, step=1000.0)
-            us_val = st.number_input("📝 美股市值", min_value=0.0, value=def_us, step=1000.0)
+            hk_val  = st.number_input("📝 港股总市值",    min_value=0.0, value=def_hk,  step=1000.0)
+            us_val  = st.number_input("📝 美股总市值",    min_value=0.0, value=def_us,  step=1000.0)
         with col_a2:
             div_val = st.number_input("📝 低波红利股市值", min_value=0.0, value=def_div, step=1000.0)
-            hr_val = st.number_input("📝 高风险股市值", min_value=0.0, value=def_hr, step=1000.0)
-            
-        submitted_assets = st.form_submit_button("计算最新净值并归档", type="primary")
-        
+            hr_val  = st.number_input("📝 高风险股市值",  min_value=0.0, value=def_hr,  step=1000.0)
+
+        submitted_assets = st.form_submit_button("🚀 计算最新净值并归档（含明细）", type="primary")
+
         if submitted_assets:
             total_input = hk_val + us_val + div_val + hr_val
             if total_input == 0:
-                 st.warning("所有资产市值总和不能为0，请确认您的输入。")
+                st.warning("所有资产市值总和不能为0，请确认您的输入。")
             else:
-                 success, msg = update_assets_and_nav(hk_val, us_val, div_val, hr_val)
-                 if success:
-                     st.toast("✅ 新净值生成与重估成功")
-                     for k in ['hk_val', 'us_val', 'div_val', 'hr_val']:
-                         if k in st.session_state: del st.session_state[k]
-                     st.rerun()
-                 else:
-                     st.error(f"净值更新失败: {msg}")
+                # 收集四类明细
+                all_details = []
+                for det_key in ['hk_details', 'us_details', 'div_details', 'hr_details']:
+                    rows = st.session_state.get(det_key, [])
+                    for r in rows:
+                        if r.get('stock_name', '').strip():
+                            all_details.append(r)
+
+                success, msg = update_assets_and_nav(hk_val, us_val, div_val, hr_val,
+                                                     asset_details=all_details if all_details else None)
+                if success:
+                    st.toast("✅ 新净值生成与重估成功")
+                    for k in ['hk_val', 'us_val', 'div_val', 'hr_val',
+                              'hk_details', 'us_details', 'div_details', 'hr_details']:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.rerun()
+                else:
+                    st.error(f"净值更新失败: {msg}")
+
 
 # ================= TAB 4: 历史与回滚 (V2) =================
 with tab4:

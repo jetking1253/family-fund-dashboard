@@ -8,6 +8,8 @@ from db import (
     db_get_member_by_name_exclude_id,
     db_update_member_name,
     db_insert_assets_and_nav,
+    db_insert_asset_details,
+    db_get_latest_asset_details,
     db_process_invest,
     db_get_nav_history_all,
     db_get_latest_assets_allocation,
@@ -70,12 +72,13 @@ def update_member_name(member_id, new_name):
         
     return db_update_member_name(member_id, new_name)
 
-def update_assets_and_nav(hk, us, div, hr):
+def update_assets_and_nav(hk, us, div, hr, asset_details=None):
     """
     资产录入更新逻辑
-    1. 计算系统当前总市值 
+    1. 计算系统当前总市值
     2. 获取系统总份额
     3. 重新计算最新净值并入库记录
+    4. 如提供 asset_details 列表则一并入库
     """
     nav_record = get_latest_nav()
     if not nav_record:
@@ -88,10 +91,12 @@ def update_assets_and_nav(hk, us, div, hr):
     if current_total_shares <= 0:
         return False, "系统总份额错误，无法计算净值"
 
-    # 计算最新单位净值 = (四大类资产 + 未分配现金) / 总份额
     new_nav = round(new_total_assets / current_total_shares, 4)
 
-    return db_insert_assets_and_nav(hk, us, div, hr, new_total_assets, current_total_shares, new_nav)
+    ok, msg, snapshot_id = db_insert_assets_and_nav(hk, us, div, hr, new_total_assets, current_total_shares, new_nav)
+    if ok and snapshot_id and asset_details:
+        db_insert_asset_details(snapshot_id, asset_details)
+    return ok, msg
 
 def process_invest(member_id, amount):
     """
@@ -142,6 +147,10 @@ def get_latest_assets_allocation():
             "高风险": float(record.get('high_risk', 0))
         }
     return {}
+
+def get_latest_asset_details():
+    """获取最近一次快照的所有持仓明细，供数据总览展示"""
+    return db_get_latest_asset_details()
 
 def rollback_last_action():
     """
