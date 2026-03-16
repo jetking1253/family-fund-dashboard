@@ -5,9 +5,11 @@ from supabase import create_client, Client
 
 @st.cache_resource
 def get_supabase() -> Client:
-    """初始化并缓存 Supabase 客户端"""
-    url: str = st.secrets["SUPABASE_URL"]
-    key: str = st.secrets["SUPABASE_KEY"]
+    """初始化并缓存 Supabase 客户端（兼容 Render 环境变量和 Streamlit secrets）"""
+    url: str = os.environ.get("SUPABASE_URL") or st.secrets.get("SUPABASE_URL", "")
+    key: str = os.environ.get("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY", "")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL / SUPABASE_KEY 未配置，请检查环境变量或 secrets.toml")
     return create_client(url, key)
 
 def init_db():

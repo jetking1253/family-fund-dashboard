@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: family-fund-dashboard
+    runtime: docker
+    plan: free          # 可改为 starter ($7/月) 解除休眠限制
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SUPABASE_URL
+        sync: false     # 在 Render 控制台手动填入，不提交到 Git
+      - key: SUPABASE_KEY
+        sync: false     # 同上
