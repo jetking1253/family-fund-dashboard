@@ -1,35 +1,11 @@
-name: name: Keep Alive - Prevent Supabase Pause
-
+name: Keep Alive - Prevent Supabase Pause
 on:
   schedule:
       - cron: '0 2 1,15 * *'
         workflow_dispatch:
-
         jobs:
           keep-alive:
-              name: Ping Supabase & Streamlit
-                  runs-on: ubuntu-latest
-
-                      steps:
-                            - name: Ping Supabase REST API
-                                    run: |
-                                              echo "Execution Time: $(date)"
-                                                        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-                                                                    -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/nav_history?select=id&limit=1" \
-                                                                                -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-                                                                                            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
-                                                                                                      echo "Supabase Status Code: $RESPONSE"
-                                                                                                                if [ "$RESPONSE" = "200" ]; then
-                                                                                                                            echo "Supabase activity maintained successfully!"
-                                                                                                                                      else
-                                                                                                                                                  echo "Unexpected response: $RESPONSE"
-                                                                                                                                                              exit 1
-                                                                                                                                                                        fi
-                                                                                                                                                                        
-                                                                                                                                                                              - name: Ping Streamlit App
-                                                                                                                                                                                      run: |
-                                                                                                                                                                                                RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-                                                                                                                                                                                                            "https://family-fund-dashboard-hp9yfow8uxrdsgnkrwcefz.streamlit.app/")
-                                                                                                                                                                                                                      echo "Streamlit Status Code: $RESPONSE"
-                                                                                                                                                                                                                                echo "Keep-alive task complete!"
-                                                                                                                                                                                                                                
+              runs-on: ubuntu-latest
+                  steps:
+                        - run: curl -L "${{ secrets.SUPABASE_URL }}"
+                        
