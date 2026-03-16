@@ -19,9 +19,7 @@ jobs:
           echo "🔍 正在查询 Supabase 数据库以保持活跃状态..."
           
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+            -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/")
           
           echo "📊 Supabase 响应状态码: $RESPONSE"
           
