@@ -1,37 +1,23 @@
 name: 🔄 Keep Alive - Prevent Supabase Pause
 
 on:
-  # 每30天自动执行一次（UTC时间每月1号和15号 02:00）
   schedule:
     - cron: '0 2 1,15 * *'
-  # 允许手动触发
   workflow_dispatch:
 
 jobs:
   keep-alive:
-    name: Ping Supabase & Streamlit
+    name: Ping Streamlit
     runs-on: ubuntu-latest
-
     steps:
-      - name: 🌐 Ping Streamlit App (This also keeps Supabase alive)
+      - name: 🌐 Ping Streamlit App
         run: |
           echo "🌐 正在唤醒 Streamlit 应用..."
-          
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 30 \
-            "https://family-fund-dashboard-hp9yfow8uxrdsgnkrwcefz.streamlit.app/")
-          
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://family-fund-dashboard-hp9yfow8uxrdsgnkrwcefz.streamlit.app/")
           echo "📊 Streamlit 响应状态码: $RESPONSE"
-          
           if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "302" ] || [ "$RESPONSE" = "403" ]; then
             echo "✅ Streamlit 应用已唤醒！(连带唤醒后台 Supabase)"
           else
             echo "ℹ️ Streamlit 返回状态码 $RESPONSE"
+            exit 1
           fi
-
-      - name: 📋 保活任务完成
-        run: |
-          echo "🎉 保活任务完成！"
-          echo "📅 下次执行时间: 约30天后"
-          echo "🔗 Supabase: https://ydianwsjajqnessckfuw.supabase.co"
-          echo "🔗 Streamlit: https://family-fund-dashboard-hp9yfow8uxrdsgnkrwcefz.streamlit.app/"
